@@ -238,6 +238,12 @@ export function VideoExportDialog(dialog, onSave) {
       }
 
       console.log('[ExportDialog] export start:', { ...videoConfig, outputPath });
+      const hasBgVideo = matchSource && that.logParameters.flightVideoPath;
+      if (hasBgVideo) {
+        console.log('[ExportDialog] overlay mode, bg:', that.logParameters.flightVideoPath);
+        delete that.logParameters.flightVideo; // 让 renderer 走纯前景快速路径
+      }
+
       window.electronAPI.exportVideoStart({
         width: videoConfig.width,
         height: videoConfig.height,
@@ -246,6 +252,7 @@ export function VideoExportDialog(dialog, onSave) {
         bitrate: videoConfig.bitrate,
         gop: videoConfig.gop,
         outputPath: outputPath,
+        videoSourcePath: hasBgVideo ? that.logParameters.flightVideoPath : null,
       });
     }
 

@@ -21,20 +21,40 @@ function startExport(config, onProgress, onComplete) {
     width, height, frameRate,
     encoder, bitrate, gop,
     outputPath,
+    videoSourcePath,
   } = config;
 
-  const args = [
+  const args = [];
+
+  // Input 0: background video (if available)
+  if (videoSourcePath) {
+    args.push('-i', videoSourcePath);
+  }
+
+  // Input 1: stdin raw RGBA foreground
+  args.push(
     '-f', 'rawvideo',
     '-pix_fmt', 'rgba',
     '-s', `${width}x${height}`,
     '-r', String(frameRate),
-    '-i', '-',
-    '-c:v', encoder,
-    '-pix_fmt', 'yuv420p',
-  ];
+    '-i', '-'
+  );
 
+  // Filter: overlay foreground on background, or just copy
+  if (videoSourcePath) {
+    args.push('-filter_complex',
+      '[0:v]setpts=PTS-STARTPTS[bg];' +
+      '[1:v]setpts=PTS-STARTPTS[fg];' +
+      '[bg][fg]overlay=format=auto[out]');
+    args.push('-map', '[out]');
+  } else {
+    args.push('-map', '0:v');
+  }
+
+  args.push('-c:v', encoder);
   if (bitrate) args.push('-b:v', String(bitrate));
   if (gop) args.push('-g', String(gop));
+  args.push('-pix_fmt', 'yuv420p');
   args.push('-y', outputPath);
 
   console.log('[ffmpeg] start:', getFfmpegPath(), args.join(' '));
