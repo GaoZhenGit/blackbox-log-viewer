@@ -921,6 +921,10 @@ function BlackboxLogViewer() {
 
   function loadVideo(file) {
     currentOffsetCache.video = file.name; // store the name of the loaded video
+    // 尝试通过 Electron webUtils 获取真实路径
+    if (window.electronAPI) {
+      currentOffsetCache.videoPath = window.electronAPI.getFilePath(file) || null;
+    }
     if (videoURL) {
       URL.revokeObjectURL(videoURL);
       videoURL = false;
@@ -1813,6 +1817,7 @@ function BlackboxLogViewer() {
             inTime: videoExportInTime,
             outTime: videoExportOutTime,
             flightVideo: hasVideo && viewVideo ? video.cloneNode() : false,
+            flightVideoPath: currentOffsetCache.videoPath || null,
             flightVideoOffset: videoOffset,
             hasCraft: userSettings.drawCraft,
             hasAnalyser: hasAnalyser,

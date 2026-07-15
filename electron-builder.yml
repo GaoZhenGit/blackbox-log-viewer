@@ -8,6 +8,9 @@ win:
       arch: [x64]
   icon: public/images/pwa/bf_icon_256.png
 asar: true
+extraResources:
+  - from: bin/
+    to: ffmpeg/
 files:
   - dist/**/*
   - electron/**/*

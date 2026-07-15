@@ -25,3 +25,8 @@ crash.log
 docs
 *.MOV
 *.bbl
+*.mp4
+
+# ffmpeg binaries (downloaded by scripts/download-ffmpeg.js)
+/bin/*.exe
+/bin/*.dll

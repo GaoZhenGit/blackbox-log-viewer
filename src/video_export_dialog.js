@@ -8,6 +8,8 @@ export function VideoExportDialog(dialog, onSave) {
     flightLogDataArray,
     dialogMode,
     videoRenderer = false,
+    encoderInfo = { name: 'CPU libx264', key: 'software' },
+    probedSourceInfo = null,
     videoDuration = $(".video-duration", dialog),
     progressBar = $("progress", dialog),
     progressRenderedFrames = $(".video-export-rendered-frames", dialog),
@@ -18,14 +20,13 @@ export function VideoExportDialog(dialog, onSave) {
     lastEstimatedTimeMsec,
     that = this;
 
-  function leftPad(value, pad, width) {
-    // Coorce value to string
-    value = `${value}`;
+  let $dlg = dialog;
 
+  function leftPad(value, pad, width) {
+    value = `${value}`;
     while (value.length < width) {
       value = pad + value;
     }
-
     return value;
   }
 
@@ -33,9 +34,7 @@ export function VideoExportDialog(dialog, onSave) {
     var mins = Math.floor(secs / 60),
       secs = secs % 60,
       hours = Math.floor(mins / 60);
-
     mins = mins % 60;
-
     if (hours) {
       return `${hours}:${leftPad(mins, "0", 2)}:${leftPad(secs, "0", 2)}`;
     } else {
@@ -43,29 +42,18 @@ export function VideoExportDialog(dialog, onSave) {
     }
   }
 
-  function formatFilesize(bytes) {
-    let megs = Math.round(bytes / (1024 * 1024));
-
-    return `${megs}MB`;
-  }
-
   function setDialogMode(mode) {
     dialogMode = mode;
-
     let settingClasses = [
       "video-export-mode-settings",
       "video-export-mode-progress",
       "video-export-mode-complete",
     ];
-
     dialog.removeClass(settingClasses.join(" ")).addClass(settingClasses[mode]);
-
-    $(".video-export-dialog-start").toggle(mode == DIALOG_MODE_SETTINGS);
-    $(".video-export-dialog-cancel").toggle(mode != DIALOG_MODE_COMPLETE);
-    $(".video-export-dialog-close").toggle(mode == DIALOG_MODE_COMPLETE);
-
+    $(".video-export-dialog-start", $dlg).toggle(mode == DIALOG_MODE_SETTINGS);
+    $(".video-export-dialog-cancel", $dlg).toggle(mode != DIALOG_MODE_COMPLETE);
+    $(".video-export-dialog-close", $dlg).toggle(mode == DIALOG_MODE_COMPLETE);
     let title = "Export video";
-
     switch (mode) {
       case DIALOG_MODE_IN_PROGRESS:
         title = "Rendering video...";
@@ -74,41 +62,39 @@ export function VideoExportDialog(dialog, onSave) {
         title = "Video rendering complete!";
         break;
     }
-
-    $(".modal-title", dialog).text(title);
+    $(".modal-title", $dlg).text(title);
   }
 
   function populateConfig(videoConfig) {
     if (videoConfig.frameRate) {
-      $(".video-frame-rate").val(videoConfig.frameRate);
+      $(".video-frame-rate", $dlg).val(videoConfig.frameRate);
     }
     if (videoConfig.videoDim !== undefined) {
-      // Look for a value in the UI which closely matches the stored one (allows for floating point inaccuracy)
-      $(".video-dim option").each(function () {
+      $(".video-dim option", $dlg).each(function () {
         let thisVal = parseFloat($(this).attr("value"));
-
         if (Math.abs(videoConfig.videoDim - thisVal) < 0.05) {
-          $(".video-dim").val($(this).attr("value"));
+          $(".video-dim", $dlg).val($(this).attr("value"));
         }
       });
     }
     if (videoConfig.width) {
-      $(".video-resolution").val(`${videoConfig.width}x${videoConfig.height}`);
+      $(".video-resolution", $dlg).val(`${videoConfig.width}x${videoConfig.height}`);
+    }
+    if (videoConfig.matchSource !== undefined) {
+      $(".video-match-source", $dlg).prop("checked", videoConfig.matchSource);
     }
   }
 
   function convertUIToVideoConfig() {
     let videoConfig = {
-        frameRate: parseFloat($(".video-frame-rate", dialog).val()),
-        videoDim: parseFloat($(".video-dim", dialog).val()),
+        frameRate: parseFloat($(".video-frame-rate", $dlg).val()),
+        videoDim: parseFloat($(".video-dim", $dlg).val()),
       },
       resolution;
-
-    resolution = $(".video-resolution", dialog).val();
-
+    resolution = $(".video-resolution", $dlg).val();
     videoConfig.width = parseInt(resolution.split("x")[0], 10);
     videoConfig.height = parseInt(resolution.split("x")[1], 10);
-
+    videoConfig.matchSource = $(".video-match-source", $dlg).is(":checked");
     return videoConfig;
   }
 
@@ -118,18 +104,91 @@ export function VideoExportDialog(dialog, onSave) {
     if (!("inTime" in logParameters) || logParameters.inTime === false) {
       logParameters.inTime = flightLog.getMinTime();
     }
-
     if (!("outTime" in logParameters) || logParameters.outTime === false) {
       logParameters.outTime = flightLog.getMaxTime();
     }
 
     videoDuration.text(
-      formatTime(
-        Math.round((logParameters.outTime - logParameters.inTime) / 1000000)
-      )
+      formatTime(Math.round((logParameters.outTime - logParameters.inTime) / 1000000))
     );
 
-    $(".jumpy-video-note").toggle(!!logParameters.flightVideo);
+    $(".jumpy-video-note", $dlg).toggle(!!logParameters.flightVideo);
+
+    // --- Electron specific ---
+    if (window.electronAPI) {
+      window.electronAPI.getEncoderInfo().then(function(info) {
+        encoderInfo = info;
+        $(".video-encoder-name", $dlg).text(info.name);
+        if (info.key === 'software') {
+          $(".video-encoder-name", $dlg).append(
+            ' <span class="text-warning">(no GPU detected)</span>'
+          );
+        }
+        console.log('[ExportDialog] encoder:', info.name, info.key);
+      });
+
+      $(".video-match-source-section", $dlg).toggle(!!logParameters.flightVideo);
+      $(".video-match-source", $dlg).prop("checked", false);
+      probedSourceInfo = null;
+
+      const videoPath = logParameters.flightVideoPath;
+      console.log('[ExportDialog] show, videoPath:', videoPath);
+
+      // Reset controls — use css() for reliable reset
+      $(".form-group:has(.video-frame-rate)", $dlg).css('display', '');
+      $(".form-group:has(.video-resolution)", $dlg).css('display', '');
+      $(".video-probed-info", $dlg).hide().text('');
+
+      $(".video-match-source", $dlg).off("change").on("change", async function() {
+        const checked = $(this).is(":checked");
+        if (checked) {
+          let probePath = videoPath;
+          if (!probePath) {
+            probePath = await window.electronAPI.openFileDialog({
+              title: 'Select the source video file',
+              filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'mpeg'] }],
+            });
+            if (!probePath) {
+              $(this).prop("checked", false);
+              return;
+            }
+          }
+
+          console.log('[ExportDialog] probing:', probePath);
+          $(".video-probed-info", $dlg).show().text("Probing source video...");
+          try {
+            const info = await window.electronAPI.probeVideo(probePath);
+            probedSourceInfo = info;
+            if (info) {
+              const infoText = `${info.width}x${info.height} @ ${info.frameRate}fps` +
+                (info.bitrate ? `, ${Math.round(info.bitrate / 1000000)}Mbps` : '');
+              console.log('[ExportDialog] probed:', infoText);
+              $(".video-probed-info", $dlg).text(infoText);
+              const resStr = `${info.width}x${info.height}`;
+              if ($(".video-resolution option[value='" + resStr + "']", $dlg).length) {
+                $(".video-resolution", $dlg).val(resStr);
+              }
+              if ($(".video-frame-rate option[value='" + info.frameRate + "']", $dlg).length) {
+                $(".video-frame-rate", $dlg).val(info.frameRate);
+              }
+            } else {
+              $(".video-probed-info", $dlg).text("No video stream found");
+            }
+          } catch (err) {
+            console.error('[ExportDialog] probe failed:', err);
+            $(".video-probed-info", $dlg).text("Probe failed: " + err.message);
+          }
+          // Hide frame rate & resolution; dim stays visible (not a video source param)
+          $(".form-group:has(.video-frame-rate)", $dlg).hide();
+          $(".form-group:has(.video-resolution)", $dlg).hide();
+        } else {
+          probedSourceInfo = null;
+          $(".video-probed-info", $dlg).hide().text('');
+          $(".form-group:has(.video-frame-rate)", $dlg).css('display', '');
+          $(".form-group:has(.video-resolution)", $dlg).css('display', '');
+        }
+      });
+    }
 
     dialog.modal("show");
 
@@ -139,12 +198,51 @@ export function VideoExportDialog(dialog, onSave) {
     populateConfig(videoConfig);
   };
 
-  $(".video-export-dialog-start").click(function (e) {
-    let lastWrittenBytes = 0,
-      videoConfig = convertUIToVideoConfig();
+  $(".video-export-dialog-start", $dlg).click(async function (e) {
+    let videoConfig = convertUIToVideoConfig();
 
-    // Send our video config to our host to be saved for next time:
+    console.log('[ExportDialog] start, config:', JSON.stringify(videoConfig));
     onSave(videoConfig);
+
+    if (window.electronAPI) {
+      const matchSource = videoConfig.matchSource && that.logParameters.flightVideo;
+
+      if (matchSource && probedSourceInfo) {
+        console.log('[ExportDialog] using probed params:', probedSourceInfo);
+        if (probedSourceInfo.width && probedSourceInfo.height) {
+          videoConfig.width = probedSourceInfo.width;
+          videoConfig.height = probedSourceInfo.height;
+        }
+        if (probedSourceInfo.frameRate) {
+          videoConfig.frameRate = probedSourceInfo.frameRate;
+        }
+        if (probedSourceInfo.bitrate) {
+          videoConfig.bitrate = probedSourceInfo.bitrate;
+        }
+      }
+
+      const outputPath = await window.electronAPI.saveFileDialog({
+        title: 'Save exported video',
+        defaultPath: 'video.mp4',
+        filters: [{ name: 'MP4 Video', extensions: ['mp4'] }],
+      });
+
+      if (!outputPath) {
+        dialog.modal("hide");
+        return;
+      }
+
+      console.log('[ExportDialog] export start:', { ...videoConfig, outputPath });
+      window.electronAPI.exportVideoStart({
+        width: videoConfig.width,
+        height: videoConfig.height,
+        frameRate: videoConfig.frameRate,
+        encoder: encoderInfo.encoder,
+        bitrate: videoConfig.bitrate,
+        gop: videoConfig.gop,
+        outputPath: outputPath,
+      });
+    }
 
     videoRenderer = new FlightLogVideoRenderer(
       that.flightLog,
@@ -177,40 +275,12 @@ export function VideoExportDialog(dialog, onSave) {
               Math.round((lastEstimatedTimeMsec - elapsedTimeMsec) / 1000),
               0
             );
-
             progressRemaining.text(formatTime(estimatedRemaining));
-
-            let writtenBytes = videoRenderer.getWrittenSize(),
-              estimatedBytes = Math.round(
-                (frameCount / frameIndex) * writtenBytes
-              );
-
-            /*
-             * Only update the filesize estimate when a block is written (avoids the estimated filesize slowly
-             * decreasing between blocks)
-             */
-            if (writtenBytes != lastWrittenBytes) {
-              lastWrittenBytes = writtenBytes;
-
-              if (writtenBytes > 1000000) {
-                // Wait for the first significant chunk to be written (don't use the tiny header as a size estimate)
-                progressSize.text(
-                  `${formatFilesize(writtenBytes)} / ${formatFilesize(
-                    estimatedBytes
-                  )}`
-                );
-
-                fileSizeWarning.toggle(
-                  !videoRenderer.willWriteDirectToDisk() &&
-                    estimatedBytes >= 475 * 1024 * 1024
-                );
-              }
-            }
           }
         },
         onComplete: function (success, frameCount) {
           if (success) {
-            $(".video-export-result").text(
+            $(".video-export-result", $dlg).text(
               `Rendered ${frameCount} frames in ${formatTime(
                 Math.round((Date.now() - renderStartTime) / 1000)
               )}`
@@ -219,7 +289,6 @@ export function VideoExportDialog(dialog, onSave) {
           } else {
             dialog.modal("hide");
           }
-          // Free up any memory still held by the video renderer
           if (videoRenderer) {
             videoRenderer = false;
           }
@@ -230,7 +299,7 @@ export function VideoExportDialog(dialog, onSave) {
     progressBar.prop("value", 0);
     progressRenderedFrames.text("");
     progressRemaining.text("");
-    progressSize.text("Calculating...");
+    progressSize.parent().parent().hide();
     fileSizeWarning.hide();
 
     setDialogMode(DIALOG_MODE_IN_PROGRESS);
@@ -242,7 +311,7 @@ export function VideoExportDialog(dialog, onSave) {
     e.preventDefault();
   });
 
-  $(".video-export-dialog-cancel").click(function (e) {
+  $(".video-export-dialog-cancel", $dlg).click(function (e) {
     if (videoRenderer) {
       videoRenderer.cancel();
     }
@@ -250,6 +319,6 @@ export function VideoExportDialog(dialog, onSave) {
 
   dialog.modal({
     show: false,
-    backdrop: "static", // Don't allow a click on the backdrop to close the dialog
+    backdrop: "static",
   });
 }

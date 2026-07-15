@@ -2703,13 +2703,28 @@
                         <div class="form-group">
                             <label class="col-sm-3 control-label">Video format</label>
                             <div class="col-sm-9">
-                                <p class="form-control-static video-format">WebM</p>
+                                <p class="form-control-static video-format">H.264 (MP4)</p>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">Encoder</label>
+                            <div class="col-sm-9">
+                                <p class="form-control-static video-encoder-name">Detecting...</p>
+                            </div>
+                        </div>
+                        <div class="form-group video-match-source-section" style="display:none;">
+                            <label class="col-sm-3 control-label">Match source</label>
+                            <div class="col-sm-9">
+                                <label class="checkbox-inline">
+                                    <input type="checkbox" class="video-match-source"> Use source video parameters (framerate, resolution, bitrate)
+                                </label>
+                                <p class="form-control-static video-probed-info" style="display:none; margin-top:4px;"></p>
                             </div>
                         </div>
                         <div class="form-group">
                             <label class="col-sm-3 control-label">Audio format</label>
                             <div class="col-sm-9">
-                                <p class="form-control-static audio-format">Not supported yet (no audio will be included)</p>
+                                <p class="form-control-static audio-format">Not supported (will be added later)</p>
                             </div>
                         </div>
                         <div class="form-group jumpy-video-note">

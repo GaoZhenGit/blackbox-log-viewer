@@ -393,6 +393,11 @@
   resolved "https://registry.npmmirror.com/@xmldom/xmldom/-/xmldom-0.8.13.tgz"
   integrity sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==
 
+"7zip-bin@^5.2.0":
+  version "5.2.0"
+  resolved "https://registry.npmmirror.com/7zip-bin/-/7zip-bin-5.2.0.tgz"
+  integrity sha512-ukTPVhqG4jNzMro2qA9HSCSSVJN3aN7tlb+hfqYCt3ER0yWroeA2VR38MNrOHLQ/cVj+DaIMad0kFCtWWowh/A==
+
 abbrev@^4.0.0:
   version "4.0.0"
   resolved "https://registry.npmmirror.com/abbrev/-/abbrev-4.0.0.tgz"

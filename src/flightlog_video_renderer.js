@@ -1,27 +1,5 @@
 import { FlightLogGrapher } from "./grapher";
 
-/**
- * Render a video of the given log using the given videoOptions (user video settings) and logParameters.
- *
- * flightLog - FlightLog object to render
- *
- * logParameters - Object with these fields:
- *     inTime      - Blackbox time code the video should start at, or false to start from the beginning
- *     outTime     - Blackbox time code the video should end at, or false to end at the end
- *     graphConfig - GraphConfig object to be used for drawing the graphs
- *     flightVideo - Flight video to display behind the graphs (optional)
- *     flightVideoOffset - Offset of flight video start time relative to start of log in seconds
- *
- * videoOptions - Object with these fields:
- *     frameRate
- *     width
- *     height
- *     videoDim   - Amount of dimming applied to background video from 0.0 to 1.0
- *
- * events - Object with these fields:
- *     onComplete - On render completion, called with (success, frameCount)
- *     onProgress - Called periodically with (frameIndex, frameCount) to report progress
- */
 export function FlightLogVideoRenderer(
   flightLog,
   logParameters,
@@ -30,23 +8,19 @@ export function FlightLogVideoRenderer(
 ) {
   let WORK_CHUNK_SIZE_FOCUSED = 8,
     WORK_CHUNK_SIZE_UNFOCUSED = 32,
-    videoWriter,
     canvas = document.createElement("canvas"),
     stickCanvas = document.createElement("canvas"),
     craftCanvas = document.createElement("canvas"),
     analyserCanvas = document.createElement("canvas"),
     stickCanvasLeft,
     stickCanvasTop,
-    hasStick,
     craftCanvasLeft,
     craftCanvasTop,
-    hasCraft,
     analyserCanvasLeft,
     analyserCanvasTop,
-    hasAnalyser,
-    canvasContext = canvas.getContext("2d"),
+    canvasContext = canvas.getContext("2d", { willReadFrequently: true }),
     frameCount,
-    frameDuration /* Duration of a frame in Blackbox's microsecond time units */,
+    frameDuration,
     frameTime,
     frameIndex,
     cancel = false,
@@ -55,9 +29,7 @@ export function FlightLogVideoRenderer(
     visibilityChange,
     graph;
 
-  // From https://developer.mozilla.org/en-US/docs/Web/Guide/User_experience/Using_the_Page_Visibility_API
   if (typeof document.hidden !== "undefined") {
-    // Opera 12.10 and Firefox 18 and later support
     hidden = "hidden";
     visibilityChange = "visibilitychange";
   } else if (typeof document.mozHidden !== "undefined") {
@@ -71,10 +43,6 @@ export function FlightLogVideoRenderer(
     visibilityChange = "webkitvisibilitychange";
   }
 
-  /**
-   * Chrome slows down timers when the tab loses focus, so we want to fire fewer timer events (render more frames
-   * in a chunk) in order to compensate.
-   */
   function handleVisibilityChange() {
     if (document[hidden]) {
       workChunkSize = WORK_CHUNK_SIZE_UNFOCUSED;
@@ -85,11 +53,7 @@ export function FlightLogVideoRenderer(
 
   function installVisibilityHandler() {
     if (typeof document[hidden] !== "undefined") {
-      document.addEventListener(
-        visibilityChange,
-        handleVisibilityChange,
-        false
-      );
+      document.addEventListener(visibilityChange, handleVisibilityChange, false);
     }
   }
 
@@ -99,98 +63,43 @@ export function FlightLogVideoRenderer(
     }
   }
 
-  function supportsFileWriter() {
-    return !!(chrome && chrome.fileSystem);
-  }
-
-  /**
-   * Returns a Promise that resolves to a FileWriter for the file the user chose, or fails if the user cancels/
-   * something else bad happens.
-   */
-  function openFileForWrite(suggestedName, onComplete) {
-    return new Promise(function (resolve, reject) {
-      chrome.fileSystem.chooseEntry(
-        {
-          type: "saveFile",
-          suggestedName: suggestedName,
-          accepts: [{ extensions: ["webm"], description: "WebM video" }],
-        },
-        function (fileEntry) {
-          let error = chrome.runtime.lastError;
-
-          if (error) {
-            if (error.message == "User cancelled") {
-              reject(null);
-            } else {
-              reject(error.message);
-            }
-          } else {
-            fileEntry.createWriter(
-              function (fileWriter) {
-                fileWriter.onerror = function (e) {
-                  console.error(e);
-                };
-
-                fileWriter.onwriteend = function () {
-                  fileWriter.onwriteend = null;
-
-                  resolve(fileWriter);
-                };
-
-                // If the file already existed then we need to truncate it to avoid doing a partial rewrite
-                fileWriter.truncate(0);
-              },
-              function (e) {
-                // File is not readable or does not exist!
-                reject(e);
-              }
-            );
-          }
-        }
-      );
-    });
-  }
-
   function notifyCompletion(success, frameCount) {
     removeVisibilityHandler();
-
+    if (window.electronAPI) {
+      window.electronAPI.removeExportListeners();
+    }
     if (events && events.onComplete) {
       events.onComplete(success, frameCount);
     }
   }
 
-  function finishRender() {
-    videoWriter.complete().then(function (webM) {
-      if (webM) {
-        globalThis.saveAs(webM, "video.webm");
-      }
-
-      notifyCompletion(true, frameIndex);
-    });
-  }
-
   function renderChunk() {
-    /*
-     * Allow the UI to have some time to run by breaking the work into chunks, yielding to the browser
-     * between chunks.
-     *
-     * I'd dearly like to run the rendering process in a Web Worker, but workers can't use Canvas because
-     * it happens to be a DOM element (and Workers aren't allowed access to the DOM). Stupid!
-     */
     let framesToRender = Math.min(workChunkSize, frameCount - frameIndex);
 
     if (cancel) {
+      if (window.electronAPI) {
+        window.electronAPI.exportVideoCancel();
+      }
       notifyCompletion(false);
       return;
     }
 
-    let completeChunk = function () {
+    let chunkStart = performance.now(),
+      completeChunk = function () {
+        let elapsed = performance.now() - chunkStart;
+        if (frameIndex > 0) {
+          console.log('[Renderer] chunk done:', framesToRender, 'frames in', elapsed.toFixed(0), 'ms =',
+            (elapsed / framesToRender).toFixed(1), 'ms/frame');
+        }
         if (events && events.onProgress) {
           events.onProgress(frameIndex, frameCount);
         }
-
         if (frameIndex >= frameCount) {
-          finishRender();
+          console.log('[Renderer] all frames done, total:', frameIndex);
+          if (window.electronAPI) {
+            window.electronAPI.exportVideoCancel();
+          }
+          notifyCompletion(true, frameIndex);
         } else {
           setTimeout(renderChunk, 0);
         }
@@ -212,15 +121,26 @@ export function FlightLogVideoRenderer(
             analyserCanvasTop
           );
 
-        videoWriter.addFrame(canvas);
+        if (window.electronAPI) {
+          let t0 = performance.now();
+          const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+          let t1 = performance.now();
+          window.electronAPI.sendFrame(imageData.data.buffer.slice(0));
+          let t2 = performance.now();
+          if (frameIndex === 0 || frameIndex % 30 === 0) {
+            console.log('[Renderer] frame', frameIndex,
+              'getImageData:', (t1 - t0).toFixed(1), 'ms',
+              'sendFrame:', (t2 - t1).toFixed(1), 'ms');
+          }
+        }
 
         frameIndex++;
         frameTime += frameDuration;
       };
 
     if (logParameters.flightVideo) {
-      let renderFrames = function (frameCount) {
-        if (frameCount == 0) {
+      let renderFrames = function (remaining) {
+        if (remaining === 0) {
           completeChunk();
           return;
         }
@@ -228,22 +148,17 @@ export function FlightLogVideoRenderer(
         logParameters.flightVideo.onseeked = function () {
           canvasContext.drawImage(
             logParameters.flightVideo,
-            0,
-            0,
-            videoOptions.width,
-            videoOptions.height
+            0, 0,
+            videoOptions.width, videoOptions.height
           );
 
           if (videoOptions.videoDim > 0) {
             canvasContext.fillStyle = `rgba(0,0,0,${videoOptions.videoDim})`;
-
             canvasContext.fillRect(0, 0, canvas.width, canvas.height);
           }
 
-          // Render the normal graphs and add frame to video
           renderFrame();
-
-          renderFrames(frameCount - 1);
+          renderFrames(remaining - 1);
         };
 
         logParameters.flightVideo.currentTime =
@@ -256,72 +171,33 @@ export function FlightLogVideoRenderer(
       for (let i = 0; i < framesToRender; i++) {
         renderFrame();
       }
-
       completeChunk();
     }
   }
 
-  /**
-   * Attempt to cancel rendering sometime soon. An onComplete() event will be triggered with the 'success' parameter set
-   * appropriately to report the outcome.
-   */
   this.cancel = function () {
     cancel = true;
   };
 
-  /**
-   * Begin rendering the video and return immediately.
-   */
   this.start = function () {
     cancel = false;
-
     frameTime = logParameters.inTime;
     frameIndex = 0;
-
     installVisibilityHandler();
-
-    let webMOptions = {
-      frameRate: videoOptions.frameRate,
-    };
-
-    if (supportsFileWriter()) {
-      openFileForWrite("video.webm").then(
-        function (fileWriter) {
-          webMOptions.fileWriter = fileWriter;
-
-          videoWriter = new WebMWriter(webMOptions);
-          renderChunk();
-        },
-        function (error) {
-          console.error(error);
-          notifyCompletion(false);
-        }
-      );
-    } else {
-      videoWriter = new WebMWriter(webMOptions);
-      renderChunk();
-    }
+    renderChunk();
   };
 
-  /**
-   * Get the number of bytes flushed out to the device so far.
-   */
   this.getWrittenSize = function () {
-    return videoWriter ? videoWriter.getWrittenSize() : 0;
+    return 0;
   };
 
-  /**
-   * Returns true if the video can be saved directly to disk (bypassing memory caching). If so, the user
-   * will be prompted for a filename when the start() method is called.
-   */
   this.willWriteDirectToDisk = function () {
-    return supportsFileWriter();
+    return true;
   };
 
   canvas.width = videoOptions.width;
   canvas.height = videoOptions.height;
 
-  // If we've asked to blank the flight video completely then just don't render that
   if (videoOptions.videoDim >= 1.0) {
     delete logParameters.flightVideo;
   }
@@ -344,24 +220,19 @@ export function FlightLogVideoRenderer(
 
   stickCanvasLeft = parseInt($(stickCanvas).css("left"), 10);
   stickCanvasTop = parseInt($(stickCanvas).css("top"), 10);
-
   craftCanvasLeft = parseInt($(craftCanvas).css("left"), 10);
   craftCanvasTop = parseInt($(craftCanvas).css("top"), 10);
-
   analyserCanvasLeft = parseInt($(analyserCanvas).css("left"), 10);
   analyserCanvasTop = parseInt($(analyserCanvas).css("top"), 10);
 
   if (!("inTime" in logParameters) || logParameters.inTime === false) {
     logParameters.inTime = flightLog.getMinTime();
   }
-
   if (!("outTime" in logParameters) || logParameters.outTime === false) {
     logParameters.outTime = flightLog.getMaxTime();
   }
 
   frameDuration = 1000000 / videoOptions.frameRate;
-
-  // If the in -> out time is not an exact number of frames, we'll round the end time of the video to make it so:
   frameCount = Math.round(
     (logParameters.outTime - logParameters.inTime) / frameDuration
   );
@@ -371,16 +242,6 @@ export function FlightLogVideoRenderer(
   }
 }
 
-/**
- * Is video rendering supported on this web browser? We require the ability to encode canvases to WebP.
- */
 FlightLogVideoRenderer.isSupported = function () {
-  let canvas = document.createElement("canvas");
-
-  canvas.width = 16;
-  canvas.height = 16;
-
-  let encoded = canvas.toDataURL("image/webp", { quality: 0.9 });
-
-  return encoded && encoded.match(/^data:image\/webp;/);
+  return true;
 };

@@ -1,8 +1,11 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { detectEncoder } = require('./gpu-detect.js');
+const { startExport, probeVideo } = require('./ffmpeg.js');
 
 let mainWindow = null;
+let activeExport = null;
 let prefsPath = null;
 let prefsCache = {};
 
@@ -102,6 +105,54 @@ ipcMain.handle('app:path', () => {
   return app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath();
 });
 
+ipcMain.handle('encoder:info', () => {
+  return detectEncoder();
+});
+
+ipcMain.handle('video:probe', async (_event, videoPath) => {
+  try {
+    return await probeVideo(videoPath);
+  } catch (e) {
+    console.error('ffprobe error:', e.message);
+    return null;
+  }
+});
+
+ipcMain.handle('export:start', (_event, config) => {
+  if (activeExport) {
+    activeExport.cancel();
+    activeExport = null;
+  }
+
+  activeExport = startExport(
+    config,
+    (progress) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('export:progress', progress);
+      }
+    },
+    (error) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('export:complete', { success: !error, error: error ? error.message : null });
+      }
+      activeExport = null;
+    }
+  );
+});
+
+ipcMain.on('export:frame', (_event, buffer) => {
+  if (activeExport) {
+    activeExport.writeFrame(buffer);
+  }
+});
+
+ipcMain.on('export:cancel', () => {
+  if (activeExport) {
+    activeExport.cancel();
+    activeExport = null;
+  }
+});
+
 // --- App lifecycle ---
 
 app.whenReady().then(() => {
@@ -110,6 +161,10 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  if (activeExport) {
+    activeExport.cancel();
+    activeExport = null;
+  }
   app.quit();
 });
 
