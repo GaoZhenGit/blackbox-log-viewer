@@ -23,7 +23,7 @@ export function SpectrumExporter(fftData, opts = {}) {
    * @param {function} success is a callback triggered when export is done
    */
   function dump(success) {
-    const worker = new Worker("/js/webworkers/spectrum-export-worker.js");
+    const worker = new Worker("./js/webworkers/spectrum-export-worker.js");
 
     worker.onmessage = (event) => {
       success(event.data);

@@ -1,4 +1,4 @@
-importScripts("/js/lodash.min.js");
+importScripts("../lodash.min.js");
 
 onmessage = function(event) {
 

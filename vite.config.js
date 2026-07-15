@@ -1,6 +1,7 @@
 /** @type {import('vite').UserConfig} */
-export default { 
-    build: { 
+export default {
+    base: './',
+    build: {
         sourcemap: true,
     },
     plugins: [],

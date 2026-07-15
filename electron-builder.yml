@@ -1,0 +1,14 @@
+appId: com.betaflight.blackbox-explorer
+productName: BlackboxExplorer
+directories:
+  output: build/electron-builder
+win:
+  target:
+    - target: zip
+      arch: [x64]
+  icon: public/images/pwa/bf_icon_256.png
+asar: true
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json

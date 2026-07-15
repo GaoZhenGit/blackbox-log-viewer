@@ -32,7 +32,7 @@ export function CsvExporter(flightLog, opts = {}) {
       )
         .map((chunk) => chunk.frames)
         .value(),
-      worker = new Worker("/js/webworkers/csv-export-worker.js");
+      worker = new Worker("./js/webworkers/csv-export-worker.js");
 
     worker.onmessage = (event) => {
       success(event.data);

@@ -15,7 +15,7 @@ export function GpxExporter(flightLog) {
       )
         .map((chunk) => chunk.frames)
         .value(),
-      worker = new Worker("/js/webworkers/gpx-export-worker.js");
+      worker = new Worker("./js/webworkers/gpx-export-worker.js");
 
     worker.onmessage = (event) => {
       success(event.data);
