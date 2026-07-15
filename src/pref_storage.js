@@ -1,5 +1,5 @@
 /**
- * A local key/value store for JSON-encodable values. Supports localStorage, chrome.storage.local, and in-memory backends.
+ * A local key/value store for JSON-encodable values. Supports Electron file, localStorage, chrome.storage.local, and in-memory backends.
  *
  * Supply keyPrefix if you want it automatically prepended to key names.
  */
@@ -7,17 +7,17 @@ export function PrefStorage(keyPrefix) {
   let LOCALSTORAGE = 0,
     CHROME_STORAGE_LOCAL = 1,
     MEMORY = 2,
+    ELECTRON_FILE = 3,
     mode,
     memoryStorage = {};
 
-  /**
-   * Fetch the value with the given name, calling the onGet handler (possibly asynchronously) with the retrieved
-   * value, or null if the value didn't exist.
-   */
   this.get = function (name, onGet) {
     name = keyPrefix + name;
 
     switch (mode) {
+      case ELECTRON_FILE:
+        window.electronAPI.storeGet(name).then(onGet);
+        break;
       case LOCALSTORAGE:
         var parsed = null;
 
@@ -40,19 +40,18 @@ export function PrefStorage(keyPrefix) {
     }
   };
 
-  /**
-   * Set the given JSON-encodable value into storage using the given name.
-   */
   this.set = function (name, value) {
     name = keyPrefix + name;
 
     switch (mode) {
+      case ELECTRON_FILE:
+        window.electronAPI.storeSet(name, value);
+        break;
       case LOCALSTORAGE:
         if (globalThis.localStorage) {
           try {
             globalThis.localStorage[name] = JSON.stringify(value);
           } catch (e) {
-            // Storage quota exceeded or other error
             console.warn('Failed to save to localStorage:', e.message);
           }
         }
@@ -70,23 +69,21 @@ export function PrefStorage(keyPrefix) {
     }
   };
 
-  // Determine which storage backend to use
-  if (globalThis.chrome?.storage?.local) {
+  if (globalThis.electronAPI) {
+    mode = ELECTRON_FILE;
+  } else if (globalThis.chrome?.storage?.local) {
     mode = CHROME_STORAGE_LOCAL;
   } else if (globalThis.localStorage) {
-    // Verify localStorage is actually usable (may be disabled in some browsers)
     try {
       const testKey = '__pref_storage_test__';
       globalThis.localStorage.setItem(testKey, 'test');
       globalThis.localStorage.removeItem(testKey);
       mode = LOCALSTORAGE;
     } catch (e) {
-      // localStorage exists but isn't usable (e.g., private browsing mode)
       console.warn('localStorage is not available, falling back to in-memory storage:', e.message);
       mode = MEMORY;
     }
   } else {
-    // No persistent storage available, fall back to in-memory storage
     mode = MEMORY;
   }
 

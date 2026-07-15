@@ -1,7 +1,7 @@
 appId: com.betaflight.blackbox-explorer
 productName: BlackboxExplorer
 directories:
-  output: build/electron-builder
+  output: build
 win:
   target:
     - target: zip
