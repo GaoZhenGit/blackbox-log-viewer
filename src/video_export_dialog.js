@@ -99,6 +99,7 @@ export function VideoExportDialog(dialog, onSave) {
   }
 
   this.show = function (flightLog, logParameters, videoConfig) {
+    exportStarting = false;
     setDialogMode(DIALOG_MODE_SETTINGS);
 
     if (!("inTime" in logParameters) || logParameters.inTime === false) {
@@ -198,9 +199,13 @@ export function VideoExportDialog(dialog, onSave) {
     populateConfig(videoConfig);
   };
 
-  $(".video-export-dialog-start", $dlg).click(async function (e) {
-    let videoConfig = convertUIToVideoConfig();
+  let exportStarting = false;
 
+  $(".video-export-dialog-start", $dlg).off("click").click(async function (e) {
+    if (exportStarting) return;
+    exportStarting = true;
+
+    let videoConfig = convertUIToVideoConfig();
     console.log('[ExportDialog] start, config:', JSON.stringify(videoConfig));
     onSave(videoConfig);
 
@@ -228,7 +233,7 @@ export function VideoExportDialog(dialog, onSave) {
       });
 
       if (!outputPath) {
-        dialog.modal("hide");
+        exportStarting = false;
         return;
       }
 
@@ -279,6 +284,7 @@ export function VideoExportDialog(dialog, onSave) {
           }
         },
         onComplete: function (success, frameCount) {
+          exportStarting = false;
           if (success) {
             $(".video-export-result", $dlg).text(
               `Rendered ${frameCount} frames in ${formatTime(
@@ -311,7 +317,7 @@ export function VideoExportDialog(dialog, onSave) {
     e.preventDefault();
   });
 
-  $(".video-export-dialog-cancel", $dlg).click(function (e) {
+  $(".video-export-dialog-cancel", $dlg).off("click").click(function (e) {
     if (videoRenderer) {
       videoRenderer.cancel();
     }

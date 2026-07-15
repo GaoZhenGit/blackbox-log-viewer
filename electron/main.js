@@ -80,9 +80,12 @@ ipcMain.handle('dialog:openFile', async (_event, options) => {
 
 ipcMain.handle('dialog:saveFile', async (_event, options) => {
   const lastDir = prefsCache['lastSaveDir'] || undefined;
+  let defaultPath = lastDir
+    ? path.join(lastDir, path.basename(options.defaultPath || 'video.mp4'))
+    : options.defaultPath;
   const result = await dialog.showSaveDialog(mainWindow, {
     ...options,
-    defaultPath: lastDir,
+    defaultPath: defaultPath,
   });
   if (!result.canceled && result.filePath) {
     prefsCache['lastSaveDir'] = path.dirname(result.filePath);
