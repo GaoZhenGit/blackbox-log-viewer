@@ -80,9 +80,6 @@ export function VideoExportDialog(dialog, onSave) {
     if (videoConfig.width) {
       $(".video-resolution", $dlg).val(`${videoConfig.width}x${videoConfig.height}`);
     }
-    if (videoConfig.matchSource !== undefined) {
-      $(".video-match-source", $dlg).prop("checked", videoConfig.matchSource);
-    }
   }
 
   function convertUIToVideoConfig() {
@@ -94,7 +91,6 @@ export function VideoExportDialog(dialog, onSave) {
     resolution = $(".video-resolution", $dlg).val();
     videoConfig.width = parseInt(resolution.split("x")[0], 10);
     videoConfig.height = parseInt(resolution.split("x")[1], 10);
-    videoConfig.matchSource = $(".video-match-source", $dlg).is(":checked");
     return videoConfig;
   }
 
@@ -210,7 +206,7 @@ export function VideoExportDialog(dialog, onSave) {
     onSave(videoConfig);
 
     if (window.electronAPI) {
-      const matchSource = videoConfig.matchSource && that.logParameters.flightVideo;
+      const matchSource = $(".video-match-source", $dlg).is(":checked") && that.logParameters.flightVideo;
 
       if (matchSource && probedSourceInfo) {
         console.log('[ExportDialog] using probed params:', probedSourceInfo);
@@ -241,9 +237,12 @@ export function VideoExportDialog(dialog, onSave) {
       const hasBgVideo = matchSource && that.logParameters.flightVideoPath;
       if (hasBgVideo) {
         console.log('[ExportDialog] overlay mode, bg:', that.logParameters.flightVideoPath);
-        delete that.logParameters.flightVideo; // 让 renderer 走纯前景快速路径
+        delete that.logParameters.flightVideo;
       }
 
+      window.electronAPI.onExportCmdLine((cmd) => {
+        console.log('[ExportDialog] ffmpeg cmd:', cmd);
+      });
       window.electronAPI.exportVideoStart({
         width: videoConfig.width,
         height: videoConfig.height,

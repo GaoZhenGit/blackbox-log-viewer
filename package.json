@@ -15,7 +15,8 @@
     "format": "prettier --write src",
     "electron:dev": "electron .",
     "download:ffmpeg": "node scripts/download-ffmpeg.js",
-    "electron:build": "npm run download:ffmpeg && npm run build && electron-builder --config electron-builder.yml"
+    "electron:build": "npm run download:ffmpeg && npm run build && electron-builder --config electron-builder.yml",
+    "build:fast": "npm run build && electron-builder --config electron-builder.yml --dir"
   },
   "repository": {
     "type": "git",

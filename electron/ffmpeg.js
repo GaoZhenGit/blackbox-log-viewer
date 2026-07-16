@@ -16,7 +16,7 @@ function getFfprobePath() {
   return path.join(__dirname, '..', 'bin', 'ffprobe.exe');
 }
 
-function startExport(config, onProgress, onComplete) {
+function startExport(config, onProgress, onComplete, onCmd) {
   const {
     width, height, frameRate,
     encoder, bitrate, gop,
@@ -57,9 +57,12 @@ function startExport(config, onProgress, onComplete) {
   args.push('-pix_fmt', 'yuv420p');
   args.push('-y', outputPath);
 
-  console.log('[ffmpeg] start:', getFfmpegPath(), args.join(' '));
+  const ffmpegPath = getFfmpegPath();
+  const cmdLine = [ffmpegPath, ...args].join(' ');
+  console.log('[ffmpeg] start:', cmdLine);
+  if (onCmd) onCmd(cmdLine);
 
-  const ffmpeg = spawn(getFfmpegPath(), args, {
+  const ffmpeg = spawn(ffmpegPath, args, {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 

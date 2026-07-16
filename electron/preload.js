@@ -23,11 +23,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onExportProgress: (callback) => {
     ipcRenderer.on('export:progress', (_event, data) => callback(data));
   },
+  onExportCmdLine: (callback) => {
+    ipcRenderer.on('export:cmdline', (_event, data) => callback(data));
+  },
   onExportComplete: (callback) => {
     ipcRenderer.on('export:complete', (_event, data) => callback(data));
   },
   removeExportListeners: () => {
     ipcRenderer.removeAllListeners('export:progress');
+    ipcRenderer.removeAllListeners('export:cmdline');
     ipcRenderer.removeAllListeners('export:complete');
   },
 });

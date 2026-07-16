@@ -6,8 +6,7 @@ export function FlightLogVideoRenderer(
   videoOptions,
   events
 ) {
-  let WORK_CHUNK_SIZE_FOCUSED = 8,
-    WORK_CHUNK_SIZE_UNFOCUSED = 32,
+  let workChunkSize = 8,
     canvas = document.createElement("canvas"),
     stickCanvas = document.createElement("canvas"),
     craftCanvas = document.createElement("canvas"),
@@ -24,47 +23,11 @@ export function FlightLogVideoRenderer(
     frameTime,
     frameIndex,
     cancel = false,
-    workChunkSize = WORK_CHUNK_SIZE_FOCUSED,
-    hidden,
-    visibilityChange,
-    graph;
-
-  if (typeof document.hidden !== "undefined") {
-    hidden = "hidden";
-    visibilityChange = "visibilitychange";
-  } else if (typeof document.mozHidden !== "undefined") {
-    hidden = "mozHidden";
-    visibilityChange = "mozvisibilitychange";
-  } else if (typeof document.msHidden !== "undefined") {
-    hidden = "msHidden";
-    visibilityChange = "msvisibilitychange";
-  } else if (typeof document.webkitHidden !== "undefined") {
-    hidden = "webkitHidden";
-    visibilityChange = "webkitvisibilitychange";
-  }
-
-  function handleVisibilityChange() {
-    if (document[hidden]) {
-      workChunkSize = WORK_CHUNK_SIZE_UNFOCUSED;
-    } else {
-      workChunkSize = WORK_CHUNK_SIZE_FOCUSED;
-    }
-  }
-
-  function installVisibilityHandler() {
-    if (typeof document[hidden] !== "undefined") {
-      document.addEventListener(visibilityChange, handleVisibilityChange, false);
-    }
-  }
-
-  function removeVisibilityHandler() {
-    if (typeof document[hidden] !== "undefined") {
-      document.removeEventListener(visibilityChange, handleVisibilityChange);
-    }
-  }
+    graph,
+    // MessageChannel 不受后台节流影响，替代 setTimeout
+    _channel = new MessageChannel();
 
   function notifyCompletion(success, frameCount) {
-    removeVisibilityHandler();
     if (window.electronAPI) {
       window.electronAPI.removeExportListeners();
     }
@@ -72,6 +35,8 @@ export function FlightLogVideoRenderer(
       events.onComplete(success, frameCount);
     }
   }
+
+  _channel.port1.onmessage = renderChunk;
 
   function renderChunk() {
     let framesToRender = Math.min(workChunkSize, frameCount - frameIndex);
@@ -101,7 +66,7 @@ export function FlightLogVideoRenderer(
           }
           notifyCompletion(true, frameIndex);
         } else {
-          setTimeout(renderChunk, 0);
+          _channel.port2.postMessage(null);
         }
       },
       renderFrame = function () {
@@ -183,7 +148,6 @@ export function FlightLogVideoRenderer(
     cancel = false;
     frameTime = logParameters.inTime;
     frameIndex = 0;
-    installVisibilityHandler();
     renderChunk();
   };
 

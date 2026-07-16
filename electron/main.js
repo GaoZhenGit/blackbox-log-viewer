@@ -43,6 +43,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     show: false,
+    backgroundThrottling: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -139,6 +140,11 @@ ipcMain.handle('export:start', (_event, config) => {
         mainWindow.webContents.send('export:complete', { success: !error, error: error ? error.message : null });
       }
       activeExport = null;
+    },
+    (cmdLine) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('export:cmdline', cmdLine);
+      }
     }
   );
 });
