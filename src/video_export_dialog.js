@@ -298,6 +298,7 @@ export function VideoExportDialog(dialog, onSave) {
         outputPath: outputPath,
         videoSourcePath: hasBgVideo ? that.logParameters.flightVideoPath : null,
         logPath: logPath,
+        logIndex: that.logParameters.logIndex != null ? that.logParameters.logIndex : 0,
         inTime: that.logParameters.inTime,
         outTime: that.logParameters.outTime,
         flightVideoOffset: that.logParameters.flightVideoOffset || 0,

@@ -27,6 +27,7 @@ globalThis.semver = { gte: () => true, lt: () => false, gt: () => false, valid: 
 globalThis.userSettings = {
   drawSticks: false, drawCraft: false, drawAnalyser: false,
   sticks: { size: 0 }, craft: { size: 0 }, analyser: { size: 0 },
+  eraseBackground: true,
 };
 globalThis.blackboxLogViewer = {
   getMarker: () => null,
@@ -142,10 +143,12 @@ ipcMain.handle('export:start-b', (_event, config) => {
 
   const logData = fs.readFileSync(logPath);
   const flightLog = new FlightLog(new Uint8Array(logData));
-  if (!flightLog.openLog(0)) {
-    if (mainWindow) mainWindow.webContents.send('export:complete', { success: false, error: 'Failed to parse log' });
+  const logIndex = config.logIndex || 0;
+  if (!flightLog.openLog(logIndex)) {
+    if (mainWindow) mainWindow.webContents.send('export:complete', { success: false, error: 'Failed to open log index ' + logIndex });
     return;
   }
+  console.log('[PlanB] opened log index:', logIndex);
 
   // Follow browser logic: clamp inTime/outTime to log range (same as video_export_dialog.show)
   const logMin = flightLog.getMinTime(), logMax = flightLog.getMaxTime();

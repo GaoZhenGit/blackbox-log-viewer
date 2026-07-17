@@ -1821,6 +1821,7 @@ function BlackboxLogViewer() {
             flightVideoPath: currentOffsetCache.videoPath || null,
             flightVideoOffset: videoOffset,
             logPath: currentOffsetCache.logPath || null,
+            logIndex: currentOffsetCache.index != null ? currentOffsetCache.index : 0,
             hasCraft: userSettings.drawCraft,
             hasAnalyser: hasAnalyser,
             hasSticks: userSettings.drawSticks,
