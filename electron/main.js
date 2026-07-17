@@ -213,15 +213,26 @@ ipcMain.handle('export:start-b', (_event, config) => {
   const ctx = mainCanvas.getContext('2d');
 
   const frameDuration = 1e6 / frameRate;
-  const totalFrames = Math.round((outT - inT) / frameDuration);
 
   // Log sync: compute video start offset matching browser logic
   // browser: video.currentTime = (frameTime - logMin) / 1e6 + flightVideoOffset
-  const videoStartSec = Math.max(0, (inT - logMin) / 1e6 + flightVideoOffset);
+  const logToVideoSec = (inT - logMin) / 1e6 + flightVideoOffset;
+  // Positive offset: video leads → seek video forward
+  // Negative offset: log leads → trim log start so graph and video align at output time 0
+  let videoStartSec = 0;
+  if (logToVideoSec > 0) {
+    videoStartSec = logToVideoSec;
+  } else if (logToVideoSec < 0) {
+    inT += Math.round(-logToVideoSec * 1e6); // trim log start
+  }
+  console.log('[PlanB] sync: offset=' + flightVideoOffset + ' videoStart=' + videoStartSec.toFixed(3) + 's inT=' + inT);
+  const totalFrames = Math.round((outT - inT) / frameDuration);
+  console.log('[PlanB] frames:', totalFrames, 'duration:', (totalFrames / frameRate).toFixed(1) + 's', 'resolution:', width + 'x' + height);
 
   const ffmpegArgs = [];
   if (videoSourcePath) {
-    ffmpegArgs.push('-ss', String(videoStartSec), '-i', videoSourcePath);
+    if (videoStartSec > 0) ffmpegArgs.push('-ss', String(videoStartSec));
+    ffmpegArgs.push('-i', videoSourcePath);
   }
   ffmpegArgs.push('-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${width}x${height}`, '-r', String(frameRate), '-i', '-');
   if (videoSourcePath) {
@@ -247,6 +258,8 @@ ipcMain.handle('export:start-b', (_event, config) => {
     if (mainWindow) mainWindow.webContents.send('export:complete', { success: false, error: err.message });
   });
   ffmpeg.on('close', (code) => {
+    const totalElapsed = (Date.now() - renderStartTime) / 1000;
+    console.log('[PlanB] ffmpeg done: code=' + code + ' totalTime=' + totalElapsed.toFixed(1) + 's');
     activeExport = null;
     if (mainWindow) mainWindow.webContents.send('export:complete', { success: code === 0 || code === null });
   });
@@ -260,20 +273,38 @@ ipcMain.handle('export:start-b', (_event, config) => {
   activeExport = { cancel() { cancelled = true; ffmpeg.stdin.end(); }, writeFrame() {} };
 
   let fi = 0, ft = inT;
+  const renderStartTime = Date.now();
+  let totalRenderUs = 0, totalGetImageUs = 0, totalWriteUs = 0;
   function renderLoop() {
     if (cancelled) return;
     const end = Math.min(fi + 8, totalFrames);
     for (; fi < end; fi++, ft += frameDuration) {
+      const t0 = performance.now();
       grapher.render(ft);
       // Composite overlays (same order as FlightLogVideoRenderer)
       if (stickPos) ctx.drawImage(stickCanvas, stickPos.left, stickPos.top);
       if (craftPos) ctx.drawImage(craftCanvas, craftPos.left, craftPos.top);
       if (analyserPos) ctx.drawImage(analyserCanvas, analyserPos.left, analyserPos.top);
+      const t1 = performance.now();
       const imgData = ctx.getImageData(0, 0, width, height);
+      const t2 = performance.now();
       if (!ffmpeg.stdin.destroyed) ffmpeg.stdin.write(Buffer.from(imgData.data));
+      const t3 = performance.now();
+      totalRenderUs += (t1 - t0) * 1000;
+      totalGetImageUs += (t2 - t1) * 1000;
+      totalWriteUs += (t3 - t2) * 1000;
     }
     if (mainWindow) mainWindow.webContents.send('export:progress', { frameIndex: fi, totalFrames });
-    if (fi >= totalFrames) ffmpeg.stdin.end();
+    if (fi >= totalFrames) {
+      const elapsed = (Date.now() - renderStartTime) / 1000;
+      const avgRender = (totalRenderUs / totalFrames / 1000).toFixed(1);
+      const avgGetImg = (totalGetImageUs / totalFrames / 1000).toFixed(1);
+      const avgWrite = (totalWriteUs / totalFrames / 1000).toFixed(1);
+      const fps = (totalFrames / elapsed).toFixed(1);
+      console.log('[PlanB] perf: ' + totalFrames + ' frames in ' + elapsed.toFixed(1) + 's = ' + fps + ' fps');
+      console.log('[PlanB] avg: render=' + avgRender + 'ms getImageData=' + avgGetImg + 'ms stdinWrite=' + avgWrite + 'ms');
+      ffmpeg.stdin.end();
+    }
     else setImmediate(renderLoop);
   }
   setImmediate(renderLoop);
