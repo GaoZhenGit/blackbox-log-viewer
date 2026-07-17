@@ -143,4 +143,4 @@ function probeVideo(videoPath) {
   });
 }
 
-module.exports = { startExport, probeVideo };
+module.exports = { startExport, probeVideo, getFfmpegPath };

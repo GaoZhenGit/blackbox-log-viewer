@@ -233,17 +233,62 @@ export function VideoExportDialog(dialog, onSave) {
         return;
       }
 
-      console.log('[ExportDialog] export start:', { ...videoConfig, outputPath });
       const hasBgVideo = matchSource && that.logParameters.flightVideoPath;
-      if (hasBgVideo) {
-        console.log('[ExportDialog] overlay mode, bg:', that.logParameters.flightVideoPath);
-        delete that.logParameters.flightVideo;
-      }
+      const logPath = that.logParameters.logPath;
 
+      // 提取当前图表配置，保留完整 graph 结构（label + fields）
+      const graphConfig = that.logParameters.graphConfig;
+      const graphs = [];
+      if (graphConfig && graphConfig.getGraphs) {
+        const srcGraphs = graphConfig.getGraphs();
+        for (const g of (srcGraphs || [])) {
+          const fields = [];
+          for (const f of (g.fields || [])) {
+            fields.push({
+              fieldName: f.name,
+              color: f.color || `hsl(${fields.length * 60 % 360}, 70%, 60%)`,
+              width: (f.curve && f.curve.width) || 1.5,
+            });
+          }
+          graphs.push({ label: g.label || '', height: g.height || 100, fields: fields });
+        }
+      }
+      console.log('[ExportDialog] graphs:', graphs.length);
+
+      // **先注册监听，再调用 exportVideoStartB（避免竞态）**
       window.electronAPI.onExportCmdLine((cmd) => {
         console.log('[ExportDialog] ffmpeg cmd:', cmd);
       });
-      window.electronAPI.exportVideoStart({
+      window.electronAPI.onExportProgress((data) => {
+        if (data.frameIndex !== undefined) {
+          progressBar.prop("max", data.totalFrames - 1);
+          progressBar.prop("value", data.frameIndex);
+          progressRenderedFrames.text(
+            `${data.frameIndex + 1} / ${data.totalFrames} (${(
+              ((data.frameIndex + 1) / data.totalFrames) * 100
+            ).toFixed(1)}%)`
+          );
+          if (data.frameIndex > 0) {
+            const elapsed = Date.now() - renderStartTime;
+            const estimated = (elapsed * data.totalFrames) / data.frameIndex;
+            const remaining = Math.max(Math.round((estimated - elapsed) / 1000), 0);
+            progressRemaining.text(formatTime(remaining));
+          }
+        }
+      });
+      window.electronAPI.onExportComplete((data) => {
+        exportStarting = false;
+        if (data.success) {
+          $(".video-export-result", $dlg).text('Export completed');
+          setDialogMode(DIALOG_MODE_COMPLETE);
+        } else {
+          console.error('[ExportDialog] export failed:', data.error);
+          dialog.modal("hide");
+        }
+      });
+
+      // 方案 B：主进程读日志 + node-canvas 渲染
+      window.electronAPI.exportVideoStartB({
         width: videoConfig.width,
         height: videoConfig.height,
         frameRate: videoConfig.frameRate,
@@ -252,7 +297,26 @@ export function VideoExportDialog(dialog, onSave) {
         gop: videoConfig.gop,
         outputPath: outputPath,
         videoSourcePath: hasBgVideo ? that.logParameters.flightVideoPath : null,
+        logPath: logPath,
+        inTime: that.logParameters.inTime,
+        outTime: that.logParameters.outTime,
+        flightVideoOffset: that.logParameters.flightVideoOffset || 0,
+        graphs: graphs,
+        userSettings: globalThis.userSettings || {},
       });
+
+      if (hasBgVideo) delete that.logParameters.flightVideo;
+
+      renderStartTime = Date.now();
+      lastEstimatedTimeMsec = false;
+      setDialogMode(DIALOG_MODE_IN_PROGRESS);
+      progressBar.prop("value", 0);
+      progressRenderedFrames.text("");
+      progressRemaining.text("");
+      progressSize.parent().parent().hide();
+      fileSizeWarning.hide();
+
+      return;
     }
 
     videoRenderer = new FlightLogVideoRenderer(
@@ -326,6 +390,8 @@ export function VideoExportDialog(dialog, onSave) {
   $(".video-export-dialog-cancel", $dlg).off("click").click(function (e) {
     if (videoRenderer) {
       videoRenderer.cancel();
+    } else if (window.electronAPI) {
+      window.electronAPI.exportVideoCancel();
     }
   });
 

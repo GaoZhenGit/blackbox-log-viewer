@@ -30,3 +30,9 @@ docs
 # ffmpeg binaries (downloaded by scripts/download-ffmpeg.js)
 /bin/*.exe
 /bin/*.dll
+
+# Vite CJS bundles for Electron main process
+/electron/bundle/
+
+# User preferences (generated at runtime)
+preferences.json

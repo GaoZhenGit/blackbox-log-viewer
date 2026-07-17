@@ -106,7 +106,7 @@ export function GraphConfig(graphConfig) {
       flightLog,
       field.name
     );
-    if (field.curve === undefined || forceNewCurve) {
+    if (field.curve === undefined || forceNewCurve || field.curve.power === undefined) {
       field.curve = defaultCurve;
     } else {
       if (field.curve.MinMax == undefined)

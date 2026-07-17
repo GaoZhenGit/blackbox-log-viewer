@@ -888,6 +888,7 @@ function BlackboxLogViewer() {
       renderLogFileInfo(file);
       renderSeekBarPicker();
       currentOffsetCache.log = file.name; // store the name of the loaded log file
+      currentOffsetCache.logPath = window.electronAPI ? window.electronAPI.getFilePath(file) : null;
       currentOffsetCache.index = null; // and clear the index
 
       hasLog = true;
@@ -1819,6 +1820,7 @@ function BlackboxLogViewer() {
             flightVideo: hasVideo && viewVideo ? video.cloneNode() : false,
             flightVideoPath: currentOffsetCache.videoPath || null,
             flightVideoOffset: videoOffset,
+            logPath: currentOffsetCache.logPath || null,
             hasCraft: userSettings.drawCraft,
             hasAnalyser: hasAnalyser,
             hasSticks: userSettings.drawSticks,

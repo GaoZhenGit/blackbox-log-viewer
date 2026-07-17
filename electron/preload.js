@@ -17,7 +17,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   probeVideo: (videoPath) => ipcRenderer.invoke('video:probe', videoPath),
 
   exportVideoStart: (config) => ipcRenderer.invoke('export:start', config),
-  exportVideoCancel: () => ipcRenderer.send('export:cancel'),
+  exportVideoStartB: (config) => ipcRenderer.invoke('export:start-b', config),
+  exportVideoCancel: () => {
+    ipcRenderer.send('export:cancel');
+    ipcRenderer.send('export:start-b-cancel'); // Plan B cancel
+  },
   sendFrame: (buffer) => ipcRenderer.send('export:frame', buffer),
 
   onExportProgress: (callback) => {
