@@ -8,12 +8,12 @@
   "default_locale": "en",
   "scripts": {
     "start": "vite",
-    "build": "vite build",
+    "build": "node scripts/build-all.mjs",
     "preview": "vite preview",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write src",
-    "electron:dev": "electron .",
+    "electron:dev": "npm run build && electron .",
     "download:ffmpeg": "node scripts/download-ffmpeg.js",
     "electron:build": "npm run download:ffmpeg && npm run build && electron-builder --config electron-builder.yml",
     "build:fast": "npm run build && electron-builder --config electron-builder.yml --dir"
