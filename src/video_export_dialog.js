@@ -192,6 +192,15 @@ export function VideoExportDialog(dialog, onSave) {
     this.flightLog = flightLog;
     this.logParameters = logParameters;
 
+    // Set chart render default: one tier below output resolution
+    const Tiers = [360, 480, 540, 720, 1080, 1440, 2160];
+    const outputH = videoConfig.height || 1080;
+    let defaultChart = 360;
+    for (let i = Tiers.length - 1; i >= 0; i--) {
+      if (Tiers[i] < outputH) { defaultChart = Tiers[i]; break; }
+    }
+    $(".chart-render-resolution", $dlg).val(String(defaultChart));
+
     populateConfig(videoConfig);
   };
 
@@ -287,10 +296,14 @@ export function VideoExportDialog(dialog, onSave) {
         }
       });
 
+      // Chart render resolution (0 = same as video)
+      const chartRenderP = parseInt($(".chart-render-resolution", $dlg).val()) || 0;
+
       // 方案 B：主进程读日志 + node-canvas 渲染
       window.electronAPI.exportVideoStartB({
         width: videoConfig.width,
         height: videoConfig.height,
+        chartRenderP: chartRenderP,
         frameRate: videoConfig.frameRate,
         encoder: encoderInfo.encoder,
         bitrate: videoConfig.bitrate,

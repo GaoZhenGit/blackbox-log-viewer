@@ -29,6 +29,7 @@ globalThis.userSettings = {
   sticks: { size: 0 }, craft: { size: 0 }, analyser: { size: 0 },
   eraseBackground: true,
 };
+globalThis.Image = class { constructor() { this.src = ''; this.onload = null; this.onerror = null; } };
 globalThis.blackboxLogViewer = {
   getMarker: () => null,
   getBookmarks: () => [],
@@ -85,7 +86,6 @@ function createWindow() {
   else mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   mainWindow.maximize();
   mainWindow.show();
-  mainWindow.webContents.openDevTools();
 }
 
 // IPC
@@ -171,11 +171,21 @@ ipcMain.handle('export:start-b', (_event, config) => {
     })));
   }
 
-  // Create canvases
-  const mainCanvas = createCanvas(width, height);
-  const stickCanvas = createCanvas(width, height);
-  const craftCanvas = createCanvas(width, height);
-  const analyserCanvas = createCanvas(width, height);
+  // Chart render resolution (0 = same as output, otherwise target vertical pixels)
+  const chartRenderP = config.chartRenderP || 0;
+  let chartW = width, chartH = height;
+  if (chartRenderP > 0 && chartRenderP < height) {
+    const ratio = chartRenderP / height;
+    chartW = Math.round(width * ratio);
+    chartH = chartRenderP;
+    console.log('[PlanB] chart render:', chartW + 'x' + chartH, '(scale ' + (ratio * 100).toFixed(0) + '%)');
+  }
+
+  // Create canvases at chart render resolution (smaller = faster)
+  const mainCanvas = createCanvas(chartW, chartH);
+  const stickCanvas = createCanvas(chartW, chartH);
+  const craftCanvas = createCanvas(chartW, chartH);
+  const analyserCanvas = createCanvas(chartW, chartH);
 
   // Merge user settings from renderer (workspace) with export-specific overrides.
   // Provide fallback defaults for stick/craft/analyser in case they're missing.
@@ -209,9 +219,9 @@ ipcMain.handle('export:start-b', (_event, config) => {
     const top = Math.max((canvasH * parseInt(opt.top)) / 100 - h / 2, 0);
     return { left, top, w, h };
   }
-  const stickPos = overlayPos(renderUserSettings.sticks || {}, width, height, true);
-  const craftPos = overlayPos(renderUserSettings.craft || {}, width, height, false);
-  const analyserPos = overlayPos(renderUserSettings.analyser || {}, width, height, false);
+  const stickPos = overlayPos(renderUserSettings.sticks || {}, chartW, chartH, true);
+  const craftPos = overlayPos(renderUserSettings.craft || {}, chartW, chartH, false);
+  const analyserPos = overlayPos(renderUserSettings.analyser || {}, chartW, chartH, false);
 
   const ctx = mainCanvas.getContext('2d');
 
@@ -237,12 +247,21 @@ ipcMain.handle('export:start-b', (_event, config) => {
     if (videoStartSec > 0) ffmpegArgs.push('-ss', String(videoStartSec));
     ffmpegArgs.push('-i', videoSourcePath);
   }
-  ffmpegArgs.push('-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${width}x${height}`, '-r', String(frameRate), '-i', '-');
+  ffmpegArgs.push('-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${chartW}x${chartH}`, '-r', String(frameRate), '-i', '-');
   if (videoSourcePath) {
-    ffmpegArgs.push('-filter_complex', '[0:v]setpts=PTS-STARTPTS[bg];[1:v]setpts=PTS-STARTPTS[fg];[bg][fg]overlay=format=auto[out]');
+    if (chartW !== width || chartH !== height) {
+      ffmpegArgs.push('-filter_complex', `[0:v]setpts=PTS-STARTPTS[bg];[1:v]setpts=PTS-STARTPTS,scale=${width}:${height}:flags=bilinear[fg];[bg][fg]overlay=format=auto[out]`);
+    } else {
+      ffmpegArgs.push('-filter_complex', '[0:v]setpts=PTS-STARTPTS[bg];[1:v]setpts=PTS-STARTPTS[fg];[bg][fg]overlay=format=auto[out]');
+    }
     ffmpegArgs.push('-map', '[out]');
   } else {
-    ffmpegArgs.push('-map', '0:v');
+    if (chartW !== width || chartH !== height) {
+      ffmpegArgs.push('-filter_complex', `[0:v]setpts=PTS-STARTPTS,scale=${width}:${height}:flags=bilinear[out]`);
+      ffmpegArgs.push('-map', '[out]');
+    } else {
+      ffmpegArgs.push('-map', '0:v');
+    }
   }
   ffmpegArgs.push('-c:v', encoder);
   if (bitrate) ffmpegArgs.push('-b:v', String(bitrate));
@@ -297,7 +316,7 @@ ipcMain.handle('export:start-b', (_event, config) => {
       totalGetImageUs += (t2 - t1) * 1000;
       totalWriteUs += (t3 - t2) * 1000;
     }
-    if (mainWindow) mainWindow.webContents.send('export:progress', { frameIndex: fi, totalFrames });
+    if (fi < totalFrames && mainWindow) mainWindow.webContents.send('export:progress', { frameIndex: fi, totalFrames });
     if (fi >= totalFrames) {
       const elapsed = (Date.now() - renderStartTime) / 1000;
       const avgRender = (totalRenderUs / totalFrames / 1000).toFixed(1);
