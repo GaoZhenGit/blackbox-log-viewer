@@ -289,9 +289,9 @@ ipcMain.handle('export:start-b', (_event, config) => {
       if (craftPos) ctx.drawImage(craftCanvas, craftPos.left, craftPos.top);
       if (analyserPos) ctx.drawImage(analyserCanvas, analyserPos.left, analyserPos.top);
       const t1 = performance.now();
-      const imgData = ctx.getImageData(0, 0, width, height);
+      const rawPixels = mainCanvas.data();
       const t2 = performance.now();
-      if (!ffmpeg.stdin.destroyed) ffmpeg.stdin.write(Buffer.from(imgData.data));
+      if (!ffmpeg.stdin.destroyed) ffmpeg.stdin.write(rawPixels);
       const t3 = performance.now();
       totalRenderUs += (t1 - t0) * 1000;
       totalGetImageUs += (t2 - t1) * 1000;
