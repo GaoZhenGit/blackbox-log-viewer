@@ -16,7 +16,7 @@ export function PrefStorage(keyPrefix) {
 
     switch (mode) {
       case ELECTRON_FILE:
-        window.electronAPI.storeGet(name).then(onGet);
+        onGet(window.electronAPI.storeGetSync(name));
         break;
       case LOCALSTORAGE:
         var parsed = null;

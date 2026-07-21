@@ -57,16 +57,35 @@ let activeExport = null;
 let prefsPath = null;
 let prefsCache = {};
 
+function getSaveDataDir() {
+  if (app.isPackaged) return path.join(path.dirname(app.getPath('exe')), 'save_data');
+  return path.join(app.getAppPath(), 'build', 'save_data');
+}
+
 function getPrefsPath() {
   if (prefsPath) return prefsPath;
-  if (app.isPackaged) prefsPath = path.join(path.dirname(app.getPath('exe')), 'preferences.json');
-  else prefsPath = path.join(app.getAppPath(), 'preferences.json');
+  const dir = getSaveDataDir();
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  prefsPath = path.join(dir, 'preferences.json');
   return prefsPath;
 }
 
 function loadPrefs() {
-  try { if (fs.existsSync(getPrefsPath())) prefsCache = JSON.parse(fs.readFileSync(getPrefsPath(), 'utf-8')); }
-  catch (e) { prefsCache = {}; }
+  try {
+    const p = getPrefsPath();
+    if (!fs.existsSync(p)) {
+      // Migrate from old paths
+      const oldPaths = [
+        path.join(app.getAppPath(), 'preferences.json'),
+        path.join(app.getPath('userData'), 'preferences.json'),
+        path.join(path.dirname(app.getPath('exe')), 'preferences.json'),
+      ];
+      for (const old of oldPaths) {
+        if (fs.existsSync(old)) { fs.copyFileSync(old, p); break; }
+      }
+    }
+    if (fs.existsSync(p)) prefsCache = JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch (e) { prefsCache = {}; }
 }
 
 function savePrefs() {
@@ -100,7 +119,8 @@ ipcMain.handle('dialog:openFile', async (_event, options) => {
 });
 
 ipcMain.handle('dialog:saveFile', async (_event, options) => {
-  const lastDir = prefsCache['lastSaveDir'] || undefined;
+  const exeDir = app.isPackaged ? path.dirname(app.getPath('exe')) : getSaveDataDir();
+  const lastDir = prefsCache['lastSaveDir'] || exeDir;
   let defaultPath = lastDir ? path.join(lastDir, path.basename(options.defaultPath || 'video.mp4')) : options.defaultPath;
   const result = await dialog.showSaveDialog(mainWindow, { ...options, defaultPath });
   if (!result.canceled && result.filePath) {
@@ -111,6 +131,7 @@ ipcMain.handle('dialog:saveFile', async (_event, options) => {
 });
 
 ipcMain.handle('store:get', (_event, key) => prefsCache[key] ?? null);
+ipcMain.on('store:get-sync', (event, key) => { event.returnValue = prefsCache[key] ?? null; });
 ipcMain.handle('store:set', (_event, key, value) => { prefsCache[key] = value; savePrefs(); });
 ipcMain.handle('app:path', () => app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath());
 ipcMain.handle('encoder:info', () => detectEncoder());

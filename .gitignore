@@ -36,3 +36,4 @@ docs
 
 # User preferences (generated at runtime)
 preferences.json
+save_data/

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
   saveFileDialog: (options) => ipcRenderer.invoke('dialog:saveFile', options),
   storeGet: (key) => ipcRenderer.invoke('store:get', key),
+  storeGetSync: (key) => ipcRenderer.sendSync('store:get-sync', key),
   storeSet: (key, value) => ipcRenderer.invoke('store:set', key, value),
   getAppPath: () => ipcRenderer.invoke('app:path'),
   getEncoderInfo: () => ipcRenderer.invoke('encoder:info'),
