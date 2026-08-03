@@ -300,6 +300,23 @@ ipcMain.handle('export:start-b', (_event, config) => {
   ffmpeg.on('error', (err) => {
     if (mainWindow) mainWindow.webContents.send('export:complete', { success: false, error: err.message });
   });
+
+  // ===== Backpressure: pause the render loop when ffmpeg's stdin buffer grows too large.
+  // Without this, Node keeps writing 3.6 MB frames as fast as it can render them,
+  // while ffmpeg encodes only at ~30 fps. The difference (~30 MB/s) accumulates in
+  // the pipe buffer until the OS kills our process for using all RAM.
+  const STDIN_HIGH = 200 * 1048576;   // 200 MB — start yielding
+  function waitDrain() {
+    return new Promise((resolve) => {
+      const stdin = ffmpeg.stdin;
+      if (cancelled || !stdin || stdin.destroyed) return resolve();
+      if (stdin.writableLength < STDIN_HIGH) return resolve();
+      const onDrain = () => { stdin.removeListener('drain', onDrain); resolve(); };
+      stdin.on('drain', onDrain);
+      // Safety: if no drain event within 2s, proceed anyway (ffmpeg may have closed)
+      setTimeout(() => { stdin.removeListener('drain', onDrain); resolve(); }, 2000);
+    });
+  }
   ffmpeg.on('close', (code) => {
     const totalElapsed = (Date.now() - renderStartTime) / 1000;
     console.log('[PlanB] ffmpeg done: code=' + code + ' totalTime=' + totalElapsed.toFixed(1) + 's');
@@ -318,9 +335,11 @@ ipcMain.handle('export:start-b', (_event, config) => {
   let fi = 0, ft = inT;
   const renderStartTime = Date.now();
   let totalRenderUs = 0, totalGetImageUs = 0, totalWriteUs = 0;
-  function renderLoop() {
+  async function renderLoop() {
     if (cancelled) return;
-    const end = Math.min(fi + 8, totalFrames);
+    // Smaller batch = more frequent backpressure checks. Was 8 frames (~264ms blocking)
+    // which let stdin buffer grow huge between checks. Now 1 frame per tick.
+    const end = Math.min(fi + 1, totalFrames);
     for (; fi < end; fi++, ft += frameDuration) {
       const t0 = performance.now();
       grapher.render(ft);
@@ -336,6 +355,11 @@ ipcMain.handle('export:start-b', (_event, config) => {
       totalRenderUs += (t1 - t0) * 1000;
       totalGetImageUs += (t2 - t1) * 1000;
       totalWriteUs += (t3 - t2) * 1000;
+
+      // Backpressure: if stdin buffer is over threshold, wait for drain
+      if (ffmpeg.stdin && ffmpeg.stdin.writableLength > STDIN_HIGH) {
+        await waitDrain();
+      }
     }
     if (fi < totalFrames && mainWindow) mainWindow.webContents.send('export:progress', { frameIndex: fi, totalFrames });
     if (fi >= totalFrames) {
